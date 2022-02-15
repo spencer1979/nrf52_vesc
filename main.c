@@ -97,7 +97,7 @@
 #endif
 #else
 #if MODULE_BUILTIN
-#define DEVICE_NAME                     "VESC 52832 BUILTIN"
+#define DEVICE_NAME                     "ONE-WHEEL BLE"
 #else
 #define DEVICE_NAME                     "VESC 52832 UART"
 #endif
@@ -180,11 +180,11 @@ static pm_peer_id_t m_peer_to_be_deleted = PM_PEER_ID_INVALID;
 #endif
 #else
 #if MODULE_BUILTIN
-#define UART_RX							6
-#define UART_TX							7
+#define UART_RX							8
+#define UART_TX							6
 #define UART_TX_DISABLED				25
 #define EN_DEFAULT						1
-#define LED_PIN							8
+#define LED_PIN							3
 #define LED_PIN2_INV					5
 #else
 #define UART_RX							7

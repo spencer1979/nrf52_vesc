@@ -97,7 +97,11 @@
 #endif
 #else
 #if MODULE_BUILTIN
+#ifdef CUST_DEVICE_NAME
+#define DEVICE_NAME                     CUST_DEVICE_NAME
+#else //#ifdef CUST_DEVICE_NAME
 #define DEVICE_NAME                     "ONE-WHEEL BLE"
+#endif //#ifdef CUST_DEVICE_NAME
 #else
 #define DEVICE_NAME                     "VESC 52832 UART"
 #endif

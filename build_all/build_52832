@@ -5,9 +5,21 @@ set -e
 FWPATH="../"
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
+DEFAULT_DEV_NAME="ONE-WHEEL BLE"
+if [ -f $DIR/.cust_dev_name ]; then
+	DEFAULT_DEV_NAME=`cat $DIR/.cust_dev_name`
+fi
+
+read -p "Enter NRF52832 BLE device name, default name is \"$DEFAULT_DEV_NAME\": " DEV_NAME
+if [ -z "$DEV_NAME" ]; then
+	DEV_NAME="$DEFAULT_DEV_NAME"
+fi
+echo $DEV_NAME > $DIR/.cust_dev_name
+echo "Device name is set to \"$DEV_NAME\""
+
 cd $FWPATH
 make clean
-make -j8 IS_52832=1 build_args='-DMODULE_BUILTIN=1'
+make -j8 IS_52832=1 build_args="-DMODULE_BUILTIN=1 -DCUST_DEVICE_NAME=\"\\\"$DEV_NAME\\\"\""
 make IS_52832=1 merge_hex
 cd $DIR
 cp $FWPATH/hex/merged.bin nrf52832_vesc_ble_rx8_tx6_led3.bin

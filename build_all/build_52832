@@ -5,7 +5,7 @@ set -e
 FWPATH="../"
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-DEFAULT_DEV_NAME="ONE-WHEEL BLE"
+DEFAULT_DEV_NAME="VESC_BLE"
 if [ -f $DIR/.cust_dev_name ]; then
 	DEFAULT_DEV_NAME=`cat $DIR/.cust_dev_name`
 fi

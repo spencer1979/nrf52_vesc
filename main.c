@@ -425,7 +425,7 @@ static void gap_params_init(void) {
 
 static void start_advertising(void) {
 	ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
-	sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, 8);
+	sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, 4); 
 }
 
 static void nrf_qwr_error_handler(uint32_t nrf_error) {
@@ -508,7 +508,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context) {
 		m_peer_to_be_deleted = PM_PEER_ID_INVALID;
 		m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
 		nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
-		sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_CONN, m_conn_handle, 8);
+		sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_CONN, m_conn_handle, 4);
 		break;
 
 	case BLE_GAP_EVT_DISCONNECTED:

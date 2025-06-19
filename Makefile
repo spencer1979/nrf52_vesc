@@ -16,7 +16,7 @@ VERBOSE=1
 CFLAGS += $(build_args)
 
 # Path to the NRF52 SDK. Change if needed.
-SDK_ROOT :=C:/Users/Chen/nRF5_SDK_17.1.0_ddde560
+SDK_ROOT :=/home/spencer/nRF5_SDK_17.1.0_ddde560
 
 TARGET_PATH := $(OUTPUT_DIRECTORY)/$(TARGETS).hex
 
@@ -299,7 +299,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/crypto/backend/cifra \
   $(SDK_ROOT)/components/libraries/crypto \
   $(SDK_ROOT)/components/libraries/stack_info \
-  $(SDK_ROOT)/external/micro-ecc/micro-ecc \
+  $(SDK_ROOT)/external/micro-ecc  \
   . \
   sdk_mod \
 
@@ -424,8 +424,4 @@ merge_hex: $(TARGET_PATH)
 	$(MKDIR)
 	srec_cat $(SD_PATH) -intel $(TARGET_PATH) -intel -o hex/merged.hex -intel --line-length=44
 	arm-none-eabi-objcopy -I ihex -O binary hex/merged.hex hex/merged.bin --gap-fill 0xFF
-
-flash:
-	nrfjprog --eraseall
-	nrfjprog --program hex/merge.hex --reset
 

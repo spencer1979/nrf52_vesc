@@ -927,6 +927,35 @@ static void go_to_sleep(void) {
 #endif
 
 int main(void) {
+
+#ifdef ENABLE_APPROTECT
+    if ((NRF_UICR->APPROTECT & UICR_APPROTECT_PALL_Msk) !=
+        (UICR_APPROTECT_PALL_Enabled << UICR_APPROTECT_PALL_Pos)) {
+
+        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Wen;
+        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
+
+        NRF_UICR->APPROTECT = ((NRF_UICR->APPROTECT & ~((uint32_t)UICR_APPROTECT_PALL_Msk)) |
+            (UICR_APPROTECT_PALL_Enabled << UICR_APPROTECT_PALL_Pos));
+
+        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Ren;
+        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
+    }
+#else
+    if ((NRF_UICR->APPROTECT & UICR_APPROTECT_PALL_Msk) !=
+        (UICR_APPROTECT_PALL_HwDisabled << UICR_APPROTECT_PALL_Pos)) {
+
+        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Wen;
+        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
+
+        NRF_UICR->APPROTECT = ((NRF_UICR->APPROTECT & ~((uint32_t)UICR_APPROTECT_PALL_Msk)) |
+            (UICR_APPROTECT_PALL_HwDisabled << UICR_APPROTECT_PALL_Pos));
+
+        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Ren;
+        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
+    }
+#endif
+
 	nrf_gpio_cfg_output(LED_PIN);
 
 #ifdef LED_PIN2_INV

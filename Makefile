@@ -16,7 +16,7 @@ VERBOSE=1
 CFLAGS += $(build_args)
 
 # Path to the NRF52 SDK. Change if needed.
-SDK_ROOT := /home/spencer/nRF5_SDK_15.3.0_59ac345
+SDK_ROOT := c:/Users/Chen/Downloads/nRF5_SDK_15.3.0_59ac345
 
 TARGET_PATH := $(OUTPUT_DIRECTORY)/$(TARGETS).hex
 
@@ -392,13 +392,33 @@ LIB_FILES += -lc -lnosys -lm
 # Default target - first one defined
 default: $(TARGETS)
 
+# Help target to show available options
+help:
+	@echo "Available targets:"
+	@echo "  default                    - Build the application"
+	@echo "  $(TARGETS)                 - Build for specific target"
+	@echo ""
+	@echo "OpenOCD flash targets:"
+	@echo "  upload                     - Flash application using OpenOCD"
+	@echo "  upload_sd                  - Flash SoftDevice using OpenOCD"
+	@echo "  mass_erase                 - Erase all flash using OpenOCD"
+	@echo ""
+	@echo "nrfjprog flash targets:"
+	@echo "  nrfjprog_erase            - Erase all flash using nrfjprog"
+	@echo "  nrfjprog_flash_sd         - Flash SoftDevice using nrfjprog"
+	@echo "  nrfjprog_flash_app        - Flash application using nrfjprog"
+	@echo "  nrfjprog_flash_complete   - Complete flash: erase + SD + app (RECOMMENDED)"
+	@echo ""
+	@echo "For nRF52832: make nrfjprog_flash_complete IS_52832=1"
+	@echo "For nRF52840: make nrfjprog_flash_complete IS_52832=0"
+
 TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
 
 include $(TEMPLATE_PATH)/Makefile.common
 
 $(foreach target, $(TARGETS), $(call define_target, $(target)))
 
-.PHONY: flash flash_softdevice erase
+.PHONY: flash flash_softdevice erase nrfjprog_flash nrfjprog_flash_complete
 
 SDK_CONFIG_FILE := ./sdk_config.h
 CMSIS_CONFIG_TOOL := $(SDK_ROOT)/external_tools/cmsisconfig/CMSIS_Configuration_Wizard.jar
@@ -413,6 +433,27 @@ upload_sd:
 
 mass_erase:
 	openocd -f openocd.cfg -c "init" -c "halt" -c "nrf5 mass_erase" -c "exit"
+
+# nrfjprog flash targets
+nrfjprog_erase:
+	nrfjprog --eraseall
+
+nrfjprog_flash_sd:
+	nrfjprog --program "$(SD_PATH)" --sectorerase
+
+nrfjprog_flash_app: $(TARGET_PATH)
+	nrfjprog --program "$(TARGET_PATH)" --sectorerase --verify --reset
+
+# Complete flash process: erase all, flash softdevice, flash application
+nrfjprog_flash_complete: $(TARGET_PATH)
+	@echo "Starting complete flash process..."
+	@echo "Step 1: Erasing all flash..."
+	nrfjprog --eraseall
+	@echo "Step 2: Programming SoftDevice..."
+	nrfjprog --program "$(SD_PATH)" --sectorerase
+	@echo "Step 3: Programming application..."
+	nrfjprog --program "$(TARGET_PATH)" --sectorerase --verify --reset
+	@echo "Flash complete! Device should now be advertising."
 
 merge_hex: $(TARGET_PATH)
 	mkdir -p hex

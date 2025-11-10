@@ -304,8 +304,9 @@ INC_FOLDERS += \
   sdk_mod \
 
 # Libraries common to all targets
+# Use Windows path format with quotes to handle spaces correctly
 LIB_FILES += \
-  $(SDK_ROOT)/external/nrf_oberon/lib/cortex-m4/hard-float/liboberon_2.0.7.a
+  "$(SDK_ROOT)/external/nrf_oberon/lib/cortex-m4/hard-float/liboberon_2.0.7.a"
 
 # Optimization flags
 OPT = -O3 -g3
@@ -444,19 +445,19 @@ nrfjprog_flash_sd:
 nrfjprog_flash_app: $(TARGET_PATH)
 	nrfjprog --program "$(TARGET_PATH)" --sectorerase --verify --reset
 
-# Complete flash process: erase all, flash softdevice, flash application
-nrfjprog_flash_complete: $(TARGET_PATH)
+# Merge SoftDevice and application into a single hex file
+merge_hex: $(TARGET_PATH)
+	@echo "Merging SoftDevice and application..."
+	@if not exist app_hex mkdir app_hex
+	srec_cat "$(SD_PATH)" -intel "$(TARGET_PATH)" -intel -o app_hex/merged_$(TARGETS).hex -intel --line-length=44
+	@echo "Merged hex file created: app_hex/merged_$(TARGETS).hex"
+
+# Complete flash process: build, merge, and flash the merged hex file
+nrfjprog_flash_complete: merge_hex
 	@echo "Starting complete flash process..."
 	@echo "Step 1: Erasing all flash..."
 	nrfjprog --eraseall
-	@echo "Step 2: Programming SoftDevice..."
-	nrfjprog --program "$(SD_PATH)" --sectorerase
-	@echo "Step 3: Programming application..."
-	nrfjprog --program "$(TARGET_PATH)" --sectorerase --verify --reset
+	@echo "Step 2: Programming merged hex (SoftDevice + Application)..."
+	nrfjprog --program "app_hex/merged_$(TARGETS).hex" --sectorerase --verify --reset
 	@echo "Flash complete! Device should now be advertising."
-
-merge_hex: $(TARGET_PATH)
-	mkdir -p hex
-	srec_cat $(SD_PATH) -intel $(TARGET_PATH) -intel -o hex/merged.hex -intel --line-length=44
-	arm-none-eabi-objcopy -I ihex -O binary hex/merged.hex hex/merged.bin --gap-fill 0xFF
 	

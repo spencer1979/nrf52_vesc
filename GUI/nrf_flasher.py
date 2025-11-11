@@ -6,11 +6,13 @@ NRF52 Flasher GUI Tool - 使用官方 pynrfjprog
 
 import sys
 import os
+import threading
+import time
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QTextEdit, QFileDialog,
-    QGroupBox, QProgressBar, QMessageBox
+    QGroupBox, QProgressBar, QMessageBox, QSpinBox
 )
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QFont, QTextCursor, QColor
@@ -30,11 +32,13 @@ class FlashThread(QThread):
     progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
 
-    def __init__(self, hex_file, operation='flash', sd_file=None):
+    def __init__(self, hex_file, operation='flash', sd_file=None, timeout=300):
         super().__init__()
         self.hex_file = hex_file
         self.operation = operation
         self.sd_file = sd_file
+        self.timeout = timeout  # 秒數，預設 300 秒 (5 分鐘)
+        self._stop_flag = False
 
     def run(self):
         try:
@@ -42,10 +46,18 @@ class FlashThread(QThread):
                 self.finished_signal.emit(False, "pynrfjprog 未安裝!")
                 return
             
+            if self._stop_flag:
+                self.finished_signal.emit(False, "操作已被中止")
+                return
+            
             if self.operation == 'erase':
                 self.erase_chip()
             elif self.operation == 'flash':
                 self.flash_hex()
+            elif self.operation == 'flash_sd':
+                self.flash_sd_only()
+            elif self.operation == 'flash_app':
+                self.flash_app_only()
             elif self.operation == 'verify':
                 self.verify_hex()
             elif self.operation == 'recover':
@@ -57,12 +69,21 @@ class FlashThread(QThread):
         except Exception as e:
             self.finished_signal.emit(False, f"錯誤: {str(e)}")
 
+    def stop_operation(self):
+        """停止燒錄操作"""
+        self._stop_flag = True
+
     def flash_hex(self):
         """使用 HighLevel API 燒錄 HEX 檔案"""
         self.output_signal.emit(f"燒錄檔案: {self.hex_file}\n")
+        self.output_signal.emit(f"操作逾時設定: {self.timeout} 秒\n")
         self.progress_signal.emit(10)
         
         try:
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
+            
             with HighLevel.API() as api:
                 probes = api.get_connected_probes()
                 if not probes:
@@ -72,6 +93,10 @@ class FlashThread(QThread):
                 snr = probes[0]
                 self.output_signal.emit(f"連接到探針: {snr}\n")
                 self.progress_signal.emit(20)
+                
+                if self._stop_flag:
+                    self.finished_signal.emit(False, "燒錄已被中止")
+                    return
                 
                 with HighLevel.DebugProbe(api, snr) as probe:
                     self.output_signal.emit("開始燒錄...\n")
@@ -85,17 +110,99 @@ class FlashThread(QThread):
         except Exception as e:
             self.finished_signal.emit(False, f"燒錄失敗: {str(e)}")
 
+    def flash_sd_only(self):
+        """僅燒錄 SoftDevice"""
+        self.output_signal.emit(f"燒錄 SoftDevice: {self.hex_file}\n")
+        self.output_signal.emit(f"操作逾時設定: {self.timeout} 秒\n")
+        self.progress_signal.emit(10)
+        
+        try:
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
+            
+            with HighLevel.API() as api:
+                probes = api.get_connected_probes()
+                if not probes:
+                    self.finished_signal.emit(False, "未找到連接的 J-Link 探針!")
+                    return
+                
+                snr = probes[0]
+                self.output_signal.emit(f"連接到探針: {snr}\n")
+                self.progress_signal.emit(20)
+                
+                if self._stop_flag:
+                    self.finished_signal.emit(False, "燒錄已被中止")
+                    return
+                
+                with HighLevel.DebugProbe(api, snr) as probe:
+                    self.output_signal.emit("開始燒錄 SoftDevice...\n")
+                    self.progress_signal.emit(30)
+                    
+                    probe.program(self.hex_file)
+                    
+                    self.output_signal.emit("✓ SoftDevice 燒錄完成!\n")
+                    self.progress_signal.emit(100)
+                    self.finished_signal.emit(True, "SoftDevice 燒錄成功!")
+        except Exception as e:
+            self.finished_signal.emit(False, f"SoftDevice 燒錄失敗: {str(e)}")
+
+    def flash_app_only(self):
+        """僅燒錄 Application"""
+        self.output_signal.emit(f"燒錄 Application: {self.hex_file}\n")
+        self.output_signal.emit(f"操作逾時設定: {self.timeout} 秒\n")
+        self.progress_signal.emit(10)
+        
+        try:
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
+            
+            with HighLevel.API() as api:
+                probes = api.get_connected_probes()
+                if not probes:
+                    self.finished_signal.emit(False, "未找到連接的 J-Link 探針!")
+                    return
+                
+                snr = probes[0]
+                self.output_signal.emit(f"連接到探針: {snr}\n")
+                self.progress_signal.emit(20)
+                
+                if self._stop_flag:
+                    self.finished_signal.emit(False, "燒錄已被中止")
+                    return
+                
+                with HighLevel.DebugProbe(api, snr) as probe:
+                    self.output_signal.emit("開始燒錄 Application...\n")
+                    self.progress_signal.emit(30)
+                    
+                    probe.program(self.hex_file)
+                    
+                    self.output_signal.emit("✓ Application 燒錄完成!\n")
+                    self.progress_signal.emit(100)
+                    self.finished_signal.emit(True, "Application 燒錄成功!")
+        except Exception as e:
+            self.finished_signal.emit(False, f"Application 燒錄失敗: {str(e)}")
+
     def erase_chip(self):
         """擦除晶片"""
         self.output_signal.emit("開始擦除晶片...\n")
         self.progress_signal.emit(10)
         
         try:
+            if self._stop_flag:
+                self.finished_signal.emit(False, "擦除已被中止")
+                return
+            
             with LowLevel.API('NRF52') as api:
                 api.enum_emu_snr()
                 api.connect_to_emu_without_snr()
                 self.output_signal.emit("已連接裝置\n")
                 self.progress_signal.emit(30)
+                
+                if self._stop_flag:
+                    self.finished_signal.emit(False, "擦除已被中止")
+                    return
                 
                 api.erase_all()
                 self.output_signal.emit("✓ 晶片擦除完成!\n")
@@ -216,6 +323,10 @@ class FlashThread(QThread):
         self.output_signal.emit(f"Application: {self.hex_file}\n\n")
         
         try:
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
+            
             with LowLevel.API('NRF52') as api:
                 api.enum_emu_snr()
                 api.connect_to_emu_without_snr()
@@ -228,7 +339,11 @@ class FlashThread(QThread):
                 
                 api.disconnect_from_emu()
             
-            # Step 2 & 3: Flash 用 HighLevel API
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
+            
+            # Step 2: Flash SoftDevice
             self.output_signal.emit("\n步驟 2/4: 燒錄 SoftDevice...\n")
             self.progress_signal.emit(35)
             
@@ -243,6 +358,11 @@ class FlashThread(QThread):
                     probe.program(self.sd_file)
                     self.output_signal.emit("✓ SoftDevice 燒錄完成\n")
             
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
+            
+            # Step 3: Flash Application
             self.output_signal.emit("\n步驟 3/4: 燒錄應用程式...\n")
             self.progress_signal.emit(65)
             
@@ -252,6 +372,10 @@ class FlashThread(QThread):
                 with HighLevel.DebugProbe(api, snr) as probe:
                     probe.program(self.hex_file)
                     self.output_signal.emit("✓ 應用程式燒錄完成\n")
+            
+            if self._stop_flag:
+                self.finished_signal.emit(False, "燒錄已被中止")
+                return
             
             # Step 4: Reset
             self.output_signal.emit("\n步驟 4/4: 重置裝置...\n")
@@ -379,6 +503,14 @@ class NRFFlasherGUI(QMainWindow):
         self.flash_btn.clicked.connect(self.start_flash)
         row1_layout.addWidget(self.flash_btn)
         
+        self.flash_sd_btn = QPushButton("燒錄 SD")
+        self.flash_sd_btn.clicked.connect(self.start_flash_sd)
+        row1_layout.addWidget(self.flash_sd_btn)
+        
+        self.flash_app_btn = QPushButton("燒錄 App")
+        self.flash_app_btn.clicked.connect(self.start_flash_app)
+        row1_layout.addWidget(self.flash_app_btn)
+        
         self.flash_separate_btn = QPushButton("燒錄 SD+App")
         self.flash_separate_btn.clicked.connect(self.start_flash_separate)
         row1_layout.addWidget(self.flash_separate_btn)
@@ -386,6 +518,12 @@ class NRFFlasherGUI(QMainWindow):
         self.verify_btn = QPushButton("驗證檔案")
         self.verify_btn.clicked.connect(self.verify_hex)
         row1_layout.addWidget(self.verify_btn)
+        
+        self.stop_btn = QPushButton("停止操作")
+        self.stop_btn.setStyleSheet("background-color: #ff6b6b; color: white;")
+        self.stop_btn.clicked.connect(self.stop_operation)
+        self.stop_btn.setEnabled(False)
+        row1_layout.addWidget(self.stop_btn)
         
         action_layout.addLayout(row1_layout)
         
@@ -403,6 +541,19 @@ class NRFFlasherGUI(QMainWindow):
         self.reset_btn = QPushButton("重置")
         self.reset_btn.clicked.connect(self.reset_device)
         row2_layout.addWidget(self.reset_btn)
+        
+        self.check_connection_btn = QPushButton("檢查連線")
+        self.check_connection_btn.clicked.connect(self.check_connection)
+        row2_layout.addWidget(self.check_connection_btn)
+        
+        # 日誌控制按鈕
+        self.save_log_btn = QPushButton("保存日誌")
+        self.save_log_btn.clicked.connect(self.save_log)
+        row2_layout.addWidget(self.save_log_btn)
+
+        self.clear_log_btn = QPushButton("清除日誌")
+        self.clear_log_btn.clicked.connect(self.clear_log)
+        row2_layout.addWidget(self.clear_log_btn)
         
         action_layout.addLayout(row2_layout)
         
@@ -589,13 +740,71 @@ class NRFFlasherGUI(QMainWindow):
         self.set_buttons_enabled(False)
         self.progress_bar.setValue(0)
         
-        self.flash_thread = FlashThread(self.hex_file, 'flash')
+        self.flash_thread = FlashThread(self.hex_file, 'flash', timeout=180)
         self.flash_thread.output_signal.connect(self.log_message)
         self.flash_thread.progress_signal.connect(self.progress_bar.setValue)
         self.flash_thread.finished_signal.connect(self.on_operation_finished)
         self.flash_thread.start()
         
         self.statusBar().showMessage("燒錄中...")
+
+    def start_flash_sd(self):
+        """開始燒錄 SoftDevice"""
+        if not self.sd_file:
+            QMessageBox.warning(self, "警告", "請先選擇 SoftDevice 檔案!")
+            return
+        
+        if not Path(self.sd_file).exists():
+            QMessageBox.critical(self, "錯誤", f"檔案不存在:\n{self.sd_file}")
+            return
+        
+        reply = QMessageBox.information(
+            self,
+            "燒錄確認",
+            f"確定要燒錄 SoftDevice?\n{Path(self.sd_file).name}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.set_buttons_enabled(False)
+            self.progress_bar.setValue(0)
+            
+            self.flash_thread = FlashThread(self.sd_file, 'flash_sd', timeout=180)
+            self.flash_thread.output_signal.connect(self.log_message)
+            self.flash_thread.progress_signal.connect(self.progress_bar.setValue)
+            self.flash_thread.finished_signal.connect(self.on_operation_finished)
+            self.flash_thread.start()
+            
+            self.statusBar().showMessage("燒錄 SoftDevice 中...")
+
+    def start_flash_app(self):
+        """開始燒錄 Application"""
+        if not self.app_file:
+            QMessageBox.warning(self, "警告", "請先選擇 Application 檔案!")
+            return
+        
+        if not Path(self.app_file).exists():
+            QMessageBox.critical(self, "錯誤", f"檔案不存在:\n{self.app_file}")
+            return
+        
+        reply = QMessageBox.information(
+            self,
+            "燒錄確認",
+            f"確定要燒錄 Application?\n{Path(self.app_file).name}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.set_buttons_enabled(False)
+            self.progress_bar.setValue(0)
+            
+            self.flash_thread = FlashThread(self.app_file, 'flash_app', timeout=180)
+            self.flash_thread.output_signal.connect(self.log_message)
+            self.flash_thread.progress_signal.connect(self.progress_bar.setValue)
+            self.flash_thread.finished_signal.connect(self.on_operation_finished)
+            self.flash_thread.start()
+            
+            self.statusBar().showMessage("燒錄 Application 中...")
 
     def start_flash_separate(self):
         """開始分開燒錄 SoftDevice + Application"""
@@ -618,7 +827,8 @@ class NRFFlasherGUI(QMainWindow):
         self.set_buttons_enabled(False)
         self.progress_bar.setValue(0)
         
-        self.flash_thread = FlashThread(self.app_file, 'flash_separate', self.sd_file)
+        # 使用固定 timeout 時間
+        self.flash_thread = FlashThread(self.app_file, 'flash_separate', self.sd_file, timeout=180)
         self.flash_thread.output_signal.connect(self.log_message)
         self.flash_thread.progress_signal.connect(self.progress_bar.setValue)
         self.flash_thread.finished_signal.connect(self.on_operation_finished)
@@ -639,7 +849,7 @@ class NRFFlasherGUI(QMainWindow):
             self.set_buttons_enabled(False)
             self.progress_bar.setValue(0)
             
-            self.flash_thread = FlashThread("", 'erase')
+            self.flash_thread = FlashThread("", 'erase', timeout=120)
             self.flash_thread.output_signal.connect(self.log_message)
             self.flash_thread.progress_signal.connect(self.progress_bar.setValue)
             self.flash_thread.finished_signal.connect(self.on_operation_finished)
@@ -660,7 +870,7 @@ class NRFFlasherGUI(QMainWindow):
         self.set_buttons_enabled(False)
         self.progress_bar.setValue(0)
         
-        self.flash_thread = FlashThread(self.hex_file, 'verify')
+        self.flash_thread = FlashThread(self.hex_file, 'verify', timeout=60)
         self.flash_thread.output_signal.connect(self.log_message)
         self.flash_thread.progress_signal.connect(self.progress_bar.setValue)
         self.flash_thread.finished_signal.connect(self.on_operation_finished)
@@ -705,6 +915,64 @@ class NRFFlasherGUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "錯誤", f"重置失敗: {str(e)}")
 
+    def check_connection(self):
+        """檢查裝置連線狀態"""
+        self.log_message("\n=== 檢查連線狀態 ===\n")
+        self.log_message("掃描 J-Link 探針...\n")
+        
+        try:
+            # 檢查 HighLevel API（用於燒錄）
+            with HighLevel.API() as api:
+                probes = api.get_connected_probes()
+                
+                if probes:
+                    self.log_message(f"✓ 發現 {len(probes)} 個 J-Link 探針\n")
+                    for i, probe_snr in enumerate(probes, 1):
+                        self.log_message(f"  {i}. 探針序號: {probe_snr}\n")
+                    
+                    # 嘗試連接第一個探針獲取更多信息
+                    snr = probes[0]
+                    try:
+                        with HighLevel.DebugProbe(api, snr) as probe:
+                            self.log_message(f"\n✓ 成功連接到探針 {snr}\n")
+                            self.log_message("探針連線正常，可以進行燒錄操作\n")
+                            QMessageBox.information(self, "連線檢查", 
+                                f"連線狀態: ✓ 正常\n\n"
+                                f"發現 {len(probes)} 個 J-Link 探針\n"
+                                f"主探針序號: {snr}\n\n"
+                                "可以進行燒錄操作")
+                            self.statusBar().showMessage("✓ 連線正常")
+                    except Exception as e:
+                        self.log_message(f"✗ 無法連接到探針 {snr}\n")
+                        self.log_message(f"  錯誤: {str(e)}\n")
+                        QMessageBox.warning(self, "連線檢查", 
+                            f"發現探針但無法連接\n\n"
+                            f"探針序號: {snr}\n"
+                            f"錯誤信息: {str(e)}")
+                        self.statusBar().showMessage("✗ 無法連接到探針")
+                else:
+                    self.log_message("✗ 未發現任何 J-Link 探針\n")
+                    self.log_message("請檢查:\n")
+                    self.log_message("  1. J-Link 驅動是否已安裝\n")
+                    self.log_message("  2. USB 連接線是否正確連接\n")
+                    self.log_message("  3. 裝置電源是否開啟\n")
+                    self.log_message("  4. 裝置調試接口是否正確\n")
+                    QMessageBox.warning(self, "連線檢查", 
+                        "未發現 J-Link 探針\n\n"
+                        "請檢查:\n"
+                        "• J-Link 驅動是否已安裝\n"
+                        "• USB 連接線是否正確連接\n"
+                        "• 裝置電源是否開啟\n"
+                        "• 調試接口是否正確連接")
+                    self.statusBar().showMessage("✗ 未發現探針")
+        except Exception as e:
+            self.log_message(f"✗ 連線檢查失敗\n")
+            self.log_message(f"  錯誤: {str(e)}\n")
+            QMessageBox.critical(self, "連線檢查", 
+                f"連線檢查失敗\n\n"
+                f"錯誤信息: {str(e)}")
+            self.statusBar().showMessage("✗ 連線檢查失敗")
+
     def on_operation_finished(self, success, message):
         """操作完成"""
         self.set_buttons_enabled(True)
@@ -716,6 +984,17 @@ class NRFFlasherGUI(QMainWindow):
             self.statusBar().showMessage("✗ 操作失敗")
             QMessageBox.critical(self, "失敗", message)
 
+    def stop_operation(self):
+        """停止當前操作"""
+        if self.flash_thread and self.flash_thread.isRunning():
+            self.log_message("\n⚠ 正在停止操作，請稍候...\n")
+            self.flash_thread.stop_operation()
+            # 等待執行緒結束，最多等 5 秒
+            self.flash_thread.wait(5000)
+            self.set_buttons_enabled(True)
+            self.statusBar().showMessage("操作已停止")
+            self.log_message("✓ 操作已停止\n")
+
     def log_message(self, message, color="default"):
         """輸出日誌訊息"""
         self.output_text.moveCursor(QTextCursor.MoveOperation.End)
@@ -726,19 +1005,56 @@ class NRFFlasherGUI(QMainWindow):
         self.output_text.insertPlainText(message)
         self.output_text.moveCursor(QTextCursor.MoveOperation.End)
 
+    def save_log(self):
+        """保存日誌到檔案"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "保存日誌",
+            "",
+            "Text Files (*.txt);;All Files (*.*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(self.output_text.toPlainText())
+                QMessageBox.information(self, "成功", f"日誌已保存到:\n{file_path}")
+                self.log_message(f"\n✓ 日誌已保存到: {file_path}\n")
+            except Exception as e:
+                QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
+                self.log_message(f"\n✗ 保存失敗: {str(e)}\n")
+
+    def clear_log(self):
+        """清除日誌"""
+        reply = QMessageBox.warning(
+            self,
+            "清除確認",
+            "確定要清除所有日誌?此操作無法復原!",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.output_text.clear()
+            self.log_message("✓ 日誌已清除\n")
+
     def set_buttons_enabled(self, enabled):
         """設定按鈕啟用狀態"""
         self.auto_flash_btn.setEnabled(enabled)
         self.flash_btn.setEnabled(enabled)
+        self.flash_sd_btn.setEnabled(enabled)
+        self.flash_app_btn.setEnabled(enabled)
         self.flash_separate_btn.setEnabled(enabled)
         self.erase_btn.setEnabled(enabled)
         self.verify_btn.setEnabled(enabled)
         self.recover_btn.setEnabled(enabled)
         self.reset_btn.setEnabled(enabled)
+        self.check_connection_btn.setEnabled(enabled)
         self.browse_merged_btn.setEnabled(enabled)
         self.browse_sd_btn.setEnabled(enabled)
         self.browse_app_btn.setEnabled(enabled)
         self.refresh_btn.setEnabled(enabled)
+        # 停止按鈕反向啟用
+        self.stop_btn.setEnabled(not enabled)
 
 
 def main():

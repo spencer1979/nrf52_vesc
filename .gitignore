@@ -3,3 +3,6 @@ _build
 .project
 .settings
 hex/*
+.vscode/
+.venv/
+
